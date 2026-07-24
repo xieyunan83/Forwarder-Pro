@@ -1,0 +1,39 @@
+{
+  "name": "Forwarder-pro",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "tsc -b && vite build",
+    "sync:config": "node scripts/sync-app-config.mjs",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "latest",
+    "@octokit/rest": "^20.0.2",
+    "@supabase/supabase-js": "^2.110.0",
+    "dayjs": "^1.11.21",
+    "file-saver": "^2.0.5",
+    "lucide-react": "^0.454.0",
+    "quill": "^2.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-quill": "^2.0.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "eslint": "^9.13.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.13",
+    "globals": "^15.11.0",
+    "typescript": "~5.6.2",
+    "typescript-eslint": "^8.10.0",
+    "vite": "^5.4.9"
+  }
+}
