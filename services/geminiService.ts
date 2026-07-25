@@ -44,8 +44,8 @@ const PROXY_LADDER = [
 ];
 
 const SYSTEM_INSTRUCTION = `
-You are "楠哥的小助理" (Nan Ge's Assistant), an elite Foreign Trade Intelligence Agent.
-Your goal is to provide deep, actionable insights for Chinese export suppliers.
+You are "货代业务助手" (Freight Forwarding Business Assistant), an elite Foreign Trade & Logistics Intelligence Agent.
+Your goal is to provide deep, actionable insights for Chinese freight forwarders and export suppliers targeting overseas importers.
 You MUST use 联网搜索 (web search) to find REAL, CURRENT information about companies, websites, and markets.
 DO NOT hallucinate. If data is unavailable, say "公开信息未找到".
 
@@ -55,7 +55,21 @@ Do NOT use English for descriptions unless it is a proper noun (like a specific 
 Structure the report professionally in Chinese.
 `;
 
-const QWEN_SYSTEM = '你是外贸客户开发专家「楠哥的小助理」，擅长背景调查、客户搜索和开发信撰写。请使用联网搜索获取真实最新信息。所有输出使用简体中文。';
+const QWEN_SYSTEM = '你是货代业务助手，擅长背景调查、进口商客户搜索、进口运输相关决策人挖掘和开发信撰写。请使用联网搜索获取真实最新信息。所有输出使用简体中文。';
+
+const classifyDecisionMakerType = (title: string = ''): 'CEO' | 'Board' | 'Logistics' | 'Other' => {
+  const t = title.toLowerCase();
+  if (/ceo|founder|owner|president|董事长|总裁|创始人|老板|managing director|\bmd\b|general manager|\bgm\b/.test(t)) return 'CEO';
+  if (/board|director|shareholder|股东|董事|监事|partner|合伙人/.test(t) && !/art director|creative director|marketing director/.test(t)) return 'Board';
+  if (/logistics|shipping|freight|transport|import.?ops|import.?operation|supply.?chain|warehouse|customs|inbound|海运|空运|物流|运输|进口|报关|仓储|供应链/.test(t)) return 'Logistics';
+  return 'Other';
+};
+
+const isPurchasingTitle = (title: string = ''): boolean => {
+  const t = title.toLowerCase();
+  return /buyer|procurement|purchasing|sourcing|采购|买手|寻源/.test(t)
+    && !/logistics|shipping|freight|transport|物流|运输|进口/.test(t);
+};
 
 const qwenSearchPayload = (enableSearch: boolean): Record<string, unknown> | undefined =>
   enableSearch
@@ -63,7 +77,14 @@ const qwenSearchPayload = (enableSearch: boolean): Record<string, unknown> | und
     : undefined;
 
 const isDomesticQwenEndpoint = (url: string): boolean =>
-  url.startsWith('/qwen-api') || /aliyuncs\.com|dashscope\.aliyun/i.test(url);
+  url.startsWith('/qwen-api') ||
+  url.startsWith('/token-plan-api') ||
+  url.startsWith('/dashscope-api') ||
+  /aliyuncs\.com|dashscope\.aliyun|token-plan/i.test(url);
+
+/** 去掉复制时可能带入的空白/零宽字符 */
+const sanitizeApiKey = (key: string): string =>
+  key.replace(/[\s\u200B-\u200D\uFEFF]/g, '').trim();
 
 export interface TaskTypeAssignment {
     task: TaskType;
@@ -107,7 +128,7 @@ const fetchHunterEmails = async (domain: string): Promise<{ people: DecisionMake
                 title: e.position || 'Employee',
                 emailGuess: e.value,
                 linkedin: e.linkedin,
-                type: (e.position?.toLowerCase().match(/ceo|founder|owner|president/) ? 'CEO' : e.position?.toLowerCase().match(/buyer|procurement|purchasing|sourcing|manager/) ? 'Buyer' : 'Other'),
+                type: classifyDecisionMakerType(e.position || ''),
                 source: 'Hunter.io',
                 isVerified: e.confidence > 85, // More strict
                 confidence: e.confidence / 100
@@ -162,7 +183,7 @@ const fetchFindymail = async (domain: string): Promise<DecisionMaker[]> => {
                 title: e.job_title || 'Manager',
                 emailGuess: e.email,
                 linkedin: e.linkedin,
-                type: (e.job_title?.toLowerCase().match(/ceo|founder|owner/) ? 'CEO' : e.job_title?.toLowerCase().match(/buyer|procurement|purchasing/) ? 'Buyer' : 'Other'),
+                type: classifyDecisionMakerType(e.job_title || ''),
                 source: 'Findymail',
                 isVerified: e.status === 'valid'
             }));
@@ -219,7 +240,9 @@ export const getGeminiConfig = (): ApiConfig[] => {
 
 export const hasApiKeyConfigured = (): boolean => {
     if (env.qwenApiKey) return true;
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('trade_scout_qwen_api_key')?.trim()) return true;
+    if (typeof localStorage !== 'undefined') {
+      if (localStorage.getItem('trade_scout_qwen_api_key')?.trim()) return true;
+    }
     if (getGeminiConfig().length > 0) return true;
     if (env.apiKey) return true;
     return false;
@@ -239,6 +262,11 @@ export const hydrateApiConfigsFromCloud = async (): Promise<boolean> => {
                 localStorage.setItem('trade_scout_qwen_api_key', c.apiKey.trim());
                 if (c.baseUrl?.trim()) localStorage.setItem('trade_scout_qwen_base_url', c.baseUrl.trim());
                 if (c.modelId?.trim()) localStorage.setItem('trade_scout_qwen_model_id', c.modelId.trim());
+            }
+            if (c.provider === 'image' && c.apiKey?.trim()) {
+                localStorage.setItem('trade_scout_image_api_key', c.apiKey.trim());
+                if (c.baseUrl?.trim()) localStorage.setItem('trade_scout_image_base_url', c.baseUrl.trim());
+                if (c.modelId?.trim()) localStorage.setItem('trade_scout_image_model_id', c.modelId.trim());
             }
             if (c.provider === 'hunter' && c.apiKey?.trim()) {
                 localStorage.setItem('trade_scout_hunter_api_key', c.apiKey.trim());
@@ -269,15 +297,17 @@ export const checkApiKeyAvailability = async (): Promise<boolean> => {
 
 const getDefaultAIModel = (): 'qwen' | 'gemini' | 'auto' => {
     if (typeof localStorage !== 'undefined') {
-        const saved = localStorage.getItem('trade_scout_default_ai_model') as 'qwen' | 'gemini' | 'auto' | null;
-        if (saved) return saved;
+        const saved = localStorage.getItem('trade_scout_default_ai_model');
+        if (saved === 'qwen' || saved === 'gemini' || saved === 'auto') return saved;
     }
-    return env.defaultAIModel;
+    const fromEnv = env.defaultAIModel;
+    if (fromEnv === 'qwen' || fromEnv === 'gemini' || fromEnv === 'auto') return fromEnv;
+    return 'qwen';
 };
 
 // --- OpenAI Adapter for Relay Services (hiapi, nvidia, deepseek, openrouter etc) ---
 const callOpenAICompatible = async (
-    config: ApiConfig,
+    config: ApiConfig & { proxyOrigin?: string },
     messages: any[],
     jsonMode: boolean = false,
     options: { extraPayload?: Record<string, unknown>; timeoutMs?: number; maxTokens?: number } = {}
@@ -316,7 +346,7 @@ const callOpenAICompatible = async (
         
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey.trim()}`
+            'Authorization': `Bearer ${sanitizeApiKey(config.apiKey)}`
         };
 
         // --- CRITICAL FIX FOR OPENROUTER ---
@@ -356,9 +386,19 @@ const callOpenAICompatible = async (
             if (!response.ok) {
                 const errText = await response.text();
                 
-                // If 401, key is wrong. STOP.
+                // If 401, key is wrong. STOP. 附带服务端原文，便于区分打错域名 vs Key 无效
                 if (response.status === 401) {
-                    throw new Error(`API Key Rejected (401). Please check your Key.`);
+                    let detail = errText;
+                    try {
+                      const j = JSON.parse(errText);
+                      detail = j?.error?.message || j?.message || errText;
+                    } catch { /* keep raw */ }
+                    const via = baseUrl.startsWith('/token-plan-api')
+                      ? 'token-plan'
+                      : baseUrl.startsWith('/qwen-api')
+                        ? 'dashscope/qwen-api'
+                        : baseUrl;
+                    throw new Error(`API Key 被拒绝 (401) via ${via}: ${detail}`);
                 }
                 
                 // If 402, Quota exceeded. STOP.
@@ -535,6 +575,7 @@ const callQwenChat = async (
         baseUrl: config.baseUrl,
         modelId: config.modelId,
         taskAssignment: 'default',
+        proxyOrigin: config.proxyOrigin,
       },
       messages,
       options.jsonMode ?? false,
@@ -559,28 +600,27 @@ const generateContentUnified = async (
 ): Promise<string> => {
     const needsWebSearch = WEB_SEARCH_TASKS.includes(task);
     const systemText = needsWebSearch ? QWEN_SYSTEM : (systemInfo || QWEN_SYSTEM);
+    const defaultModel = getDefaultAIModel();
 
-    console.log(`[AI] Task '${task}' → 千问${needsWebSearch ? ' (联网搜索)' : ''}`);
+    let userContent = buildQwenUserContent(prompt, images, attachments);
+    if (jsonMode && needsWebSearch && typeof userContent === 'string') {
+      userContent += '\n\n【重要】请严格输出 JSON 格式，不要包含 markdown 代码块。';
+    }
+    const messages = [
+      { role: 'system', content: systemText },
+      { role: 'user', content: userContent },
+    ];
+
+    const tryQwen = async () => {
+      console.log(`[AI] Task '${task}' → 千问${needsWebSearch ? ' (联网搜索)' : ''}`);
+      return callQwenChat(messages, { jsonMode, enableSearch: needsWebSearch, task });
+    };
 
     try {
-      let userContent = buildQwenUserContent(prompt, images, attachments);
-      if (jsonMode && needsWebSearch && typeof userContent === 'string') {
-        userContent += '\n\n【重要】请严格输出 JSON 格式，不要包含 markdown 代码块。';
-      }
-      const messages = [
-        { role: 'system', content: systemText },
-        { role: 'user', content: userContent },
-      ];
-
-      return await callQwenChat(messages, {
-        jsonMode,
-        enableSearch: needsWebSearch,
-        task,
-      });
+      return await tryQwen();
     } catch (qwenErr: any) {
       console.warn(`[AI] 千问调用失败 (${task}):`, qwenErr.message);
 
-      const defaultModel = getDefaultAIModel();
       if (defaultModel === 'qwen') {
         throw new Error(
           `千问调用失败: ${qwenErr.message}。请确认 API Key / Base URL 正确，联网搜索建议使用 qwen-plus 或 qwen-max 模型。`
@@ -593,11 +633,9 @@ const generateContentUnified = async (
       if (geminiResult) return geminiResult;
 
       throw new Error(
-        `千问调用失败: ${qwenErr.message}。请在管理后台配置千问 API，联网搜索需 qwen-plus / qwen-max。`
+        `千问调用失败: ${qwenErr.message}。请在管理后台配置千问 API。`
       );
     }
-
-    throw new Error('AI 调用未返回结果');
 };
 
 // --- Public Methods ---
@@ -637,7 +675,7 @@ export const testApiKey = async (apiKey: string, baseUrl?: string, modelId?: str
 
 export const generateMailGroupStrategy = async (client: AnalysisResult, productImages: string[], knowledgeBaseFiles: KnowledgeFile[]): Promise<MailGroup> => {
     const prompt = `
-    Role: Sales Expert (楠哥的小助理). Write 3 Cold Emails for ${client.companyInfo.name}.
+    Role: Sales Expert (货代业务助手). Write 3 Cold Emails for ${client.companyInfo.name}.
     They sell: ${client.businessScope.coreProducts.join(', ')}.
     Their pain points/weaknesses (from SWOT): ${client.swot.weaknesses.join(', ')}.
     
@@ -665,7 +703,7 @@ export const generateConsolidatedEmailStrategy = async (clients: AnalysisResult[
     const clientSummary = clients.slice(0, 10).map(c => `- ${c.companyInfo.name} (${c.companyInfo.nature})`).join('\n');
     
     const prompt = `
-    Role: Sales Expert (楠哥的小助理). 
+    Role: Sales Expert (货代业务助手). 
     Task: Write a Universal Cold Email Sequence suitable for a group of ${clients.length} similar potential clients.
     
     My Campaign Context/Goal: "${context}"
@@ -698,29 +736,48 @@ export const generateConsolidatedEmailStrategy = async (clients: AnalysisResult[
 export const analyzeCompany = async (domainOrName: string, mode: 'detailed' | 'economy' = 'detailed'): Promise<AnalysisResult> => {
   const prompt = `
   Target: "${domainOrName}".
-  Task: DEEP COMMERCIAL INVESTIGATION.
+  Task: DEEP COMMERCIAL INVESTIGATION for a Chinese freight forwarder (货代) selling import logistics services to this company.
   
   Action:
   1. Identify company nature, scale, and headquarters.
-  2. Analyze product pricing, positioning, and supply chain role.
-  3. Find 5-10 specific decision makers (Name + Title).
+  2. Analyze product category mix, positioning, and import/supply-chain role (focus on what they import & ship, not consumer toy merchandising).
+  3. Find 5-12 specific decision makers (Name + Title) with this PRIORITY FILTER (CRITICAL for freight forwarding outreach):
+     - INCLUDE: Owners / Bosses / Founders / CEOs / Presidents / General Managers
+     - INCLUDE: Board members / Directors / Shareholders / Partners (董事会、股东、董事)
+     - INCLUDE: ALL personnel in departments responsible for IMPORT TRANSPORTATION / inbound logistics / freight / shipping / customs / warehouse inbound / supply chain import operations
+       (titles e.g. Logistics Manager, Import Manager, Freight Manager, Shipping Coordinator, Supply Chain Manager, Customs Manager, Inbound Operations, 物流/进口/运输/报关相关)
+     - EXCLUDE: Purchasing / Procurement / Sourcing / Buyer department staff (采购、买手、寻源) — do NOT list them
      - **CRITICAL**: Prioritize finding REAL LinkedIn profiles AND REAL professional email addresses.
      - For Name, provide "firstName", "lastName", and "name" (Full Name).
      - You MUST attempt to construct a professional email for every decision maker found. If you cannot find a direct email, use standard professional email patterns (e.g., first.last@company.com, first@company.com) based on the company domain and label it as 'AI (Pattern Guess)'.
      - Look for "Contact Us", "About Us", or "Team" pages to find real names and contact info.
+     - Set "type" to one of: "CEO" | "Board" | "Logistics" | "Other"
   4. Find 3-5 competitors.
   5. Identify website product categories.
-  6. **PRODUCT ANALYSIS (CRITICAL)**: Analyze the company's products in detail:
-     - Features/Functions (功能)
-     - Colors (颜色)
-     - Packaging (包装)
-     - Market Preference (分析客户和终端市场的喜好)
-     - Recommendation (给出最适合的产品推荐建议)
+  6. **PRODUCT ANALYSIS (CRITICAL — TOP 8 CATEGORIES)**:
+     - Identify the company's most representative PRODUCT CATEGORIES (产品类别), NOT individual SKUs and NOT a toy-industry bias.
+     - Rank by importance/representativeness (sales volume, assortment weight, brand focus, or site prominence).
+     - Return EXACTLY the Top 8 product categories in "products" (if fewer than 8 exist, return all available).
+     - Each "products[].name" MUST be a category name in Chinese (e.g. "家居用品", "电子配件"), with a short category-level summary in features/pitchPoint.
+     - Also put the same Top 8 category names into "businessScope.coreProducts" and "websiteCategories" (categoryName = 类别名).
+     - productSummary should analyze category mix for a freight forwarder (cargo type, packing density, shipping profile), not toy color/packaging merchandising.
   7. **CRITICAL**: Search for "SimilarWeb stats", "site traffic", "organic keywords". ESTIMATE if not found. Populate "trafficAnalysis".
   8. **FINANCIAL TRENDS (MANDATORY)**: You MUST provide an ESTIMATE for "revenue" and "procurement" for the last 5 years (2020-2024).
      - If exact financial reports are not public, you MUST ESTIMATE based on: Employee Count * Industry Revenue Per Capita (approx $150k-$300k/employee for trading).
      - Procurement is typically 30-50% of Revenue.
      - **DO NOT RETURN 0**. Give me your best AI estimate based on company size.
+  9. **FREIGHT FORWARDER CLIENT INTELLIGENCE (CRITICAL — freightIntel)**:
+     Populate "freightIntel" for a Chinese freight forwarder evaluating this company as an import-logistics client.
+     Base on Know-Your-Shipper (KYS), customs/trade intelligence, and logistics sales practice. Cover ALL fields; ESTIMATE if public data is incomplete and clearly mark "估算".
+     Required dimensions:
+     - Identity & risk: clientRole, legalIdentity, riskCompliance (sanctions/adverse media), creditRisk (freight payment / credit)
+     - Trade lanes & volume: tradeLanes, originCountries, preferredPorts (POL/POD), shipmentVolume (TEU/shipments/value), shipmentFrequency, transportModes (FCL/LCL/Air/Express)
+     - Cargo profile: mainCommodities, hsCodesHint, cargoCharacteristics (泡货/重货/危品/温控等), specialHandling (FDA/危品/木包装等)
+     - Current logistics setup: incumbentForwarders, incotermsPreference, warehouseNetwork, customsProfile
+     - Opportunity: peakSeasons, logisticsPainPoints, serviceOpportunities, outreachAngles (3-5 bullet angles for cold outreach)
+     - strategy.actionPlan MUST be freight-forwarder outreach / service steps (not product selling steps)
+     - strategy.buyingOfficeLocation = 物流/进口操作相关办公室或收货地线索
+     - SWOT opportunities/threats MUST emphasize logistics service fit, compliance risk, and lane competition — not purchasing negotiation
   
   IMPORTANT: All text fields (description, positioning, strategy, etc.) MUST be in Simplified Chinese.
   
@@ -738,24 +795,48 @@ export const analyzeCompany = async (domainOrName: string, mode: 'detailed' | 'e
     "trafficAnalysis": [
         { "category": "General", "trafficType": "Organic (SEO)", "topKeywords": "brand name, product key", "volumeEst": "Medium" }
     ],
-    "websiteCategories": [{ "categoryName": "...", "items": ["..."] }],
-    "businessScope": { "coreProducts": [], "relevantProducts": [], "brandPositioning": "...", "consumerGroup": "...", "productVariety": "...", "priceSensitivity": "...", "websiteStructure": "..." },
-    "businessModel": { "channels": [], "hasDistributors": false, "exhibitionHistory": [], "ecommercePresence": [], "procurementInfo": "..." },
-    "supplyChain": { "role": "...", "serviceType": "..." },
+    "websiteCategories": [{ "categoryName": "代表性品类名", "items": ["代表性子类或产品举例"] }],
+    "businessScope": { "coreProducts": ["Top8品类1", "Top8品类2"], "relevantProducts": [], "brandPositioning": "...", "consumerGroup": "...", "productVariety": "...", "priceSensitivity": "...", "websiteStructure": "..." },
+    "businessModel": { "channels": [], "hasDistributors": false, "exhibitionHistory": [], "ecommercePresence": [], "procurementInfo": "进口来源国与供应商结构简述..." },
+    "supplyChain": { "role": "进口商/品牌方在供应链中的角色", "serviceType": "其对物流服务的依赖类型" },
+    "freightIntel": {
+        "clientRole": "进口商 / 品牌方 / 分销商 / 零售商...",
+        "legalIdentity": "注册主体、经营状态、地址可核验性...",
+        "riskCompliance": "制裁/限制名单/负面舆情风险（公开信息）...",
+        "creditRisk": "运费结算与账期风险判断...",
+        "tradeLanes": ["中国→美西", "东南亚→欧洲"],
+        "originCountries": ["China", "Vietnam"],
+        "preferredPorts": ["Shanghai → Los Angeles", "Ningbo → Rotterdam"],
+        "shipmentVolume": "年进口量级估算（TEU/票/货值）...",
+        "shipmentFrequency": "出货/补货频次...",
+        "transportModes": ["海运整柜 FCL", "拼箱 LCL", "空运"],
+        "mainCommodities": ["家居用品", "电子配件"],
+        "hsCodesHint": "可能涉及的 HS 编码或海关品类线索...",
+        "cargoCharacteristics": "泡货/重货/危险品/温控/超尺寸等...",
+        "specialHandling": "FDA、危品申报、木质包装、熏蒸等特殊要求...",
+        "incumbentForwarders": "现有货代/船东/承运商公开线索（未知则写公开信息未找到）...",
+        "incotermsPreference": "常见贸易术语偏好 FOB/CIF/DDP 等...",
+        "warehouseNetwork": "海外仓/DC/内陆派送布局...",
+        "customsProfile": "清关能力、进口资质、常用报关模式...",
+        "peakSeasons": "旺季与季节性规律...",
+        "logisticsPainPoints": "时效、成本、滞港、合规等痛点...",
+        "serviceOpportunities": "货代可切入的服务组合（门到门、清关、仓储、保险等）...",
+        "outreachAngles": ["切入角度1", "切入角度2", "切入角度3"]
+    },
     "targetAudience": [],
-    "financials": { "revenueEstimate": "...", "paymentTerms": "...", "ipInfo": "..." },
+    "financials": { "revenueEstimate": "...", "paymentTerms": "运费/货款结算偏好...", "ipInfo": "品牌与知识产权简述..." },
     "productSummary": {
-        "marketPreference": "终端市场喜好分析...",
-        "recommendedProducts": "最适合的产品推荐...",
-        "packagingAnalysis": "包装风格分析...",
-        "colorPreference": "颜色偏好分析...",
-        "featureAnalysis": "产品功能特点分析..."
+        "marketPreference": "该公司代表性品类与进口货源结构分析...",
+        "recommendedProducts": "货代视角：适合切入的运输/报关服务建议（基于其Top品类货型）...",
+        "packagingAnalysis": "主要品类的包装与装箱特点（体积/重量/危品等）...",
+        "colorPreference": "品类季节性或出货节奏（如有）...",
+        "featureAnalysis": "Top品类货运特征（泡货/重货/温控/合规要求等）..."
     },
     "socials": { "linkedin": "", "facebook": "" },
-    "products": [{ "name": "...", "retailPrice": "...", "retailPriceCNY": 0, "estimatedFOBPriceCNY": 0, "imageUrl": "", "competitorLink": "...", "pricingStrategy": "...", "pitchPoint": "...", "techSpecs": "...", "features": "...", "colors": "...", "packaging": "..." }],
+    "products": [{ "name": "品类名称（排名第1）", "retailPrice": "品类定位", "retailPriceCNY": 0, "estimatedFOBPriceCNY": 0, "imageUrl": "", "competitorLink": "...", "pricingStrategy": "该类在该公司业务中的重要性", "pitchPoint": "货代开发切入点", "techSpecs": "货型特点", "features": "品类简述", "colors": "", "packaging": "典型包装/装箱" }],
     "marketTrends": "...",
-    "decisionMakers": [{ "firstName": "...", "lastName": "...", "name": "...", "title": "...", "emailGuess": "...", "linkedin": "...", "type": "...", "source": "AI", "isVerified": false }],
-    "strategy": { "buyingOfficeLocation": "...", "actionPlan": [] },
+    "decisionMakers": [{ "firstName": "...", "lastName": "...", "name": "...", "title": "...", "emailGuess": "...", "linkedin": "...", "type": "Logistics", "source": "AI", "isVerified": false }],
+    "strategy": { "buyingOfficeLocation": "物流/进口操作相关办公室或主要收货地...", "actionPlan": ["货代开发行动步骤1", "步骤2"] },
     "similarCompanies": [{ "name": "...", "website": "...", "country": "...", "mainProducts": "..." }]
   }
   `;
@@ -804,6 +885,32 @@ export const analyzeCompany = async (domainOrName: string, mode: 'detailed' | 'e
       role: aiResult.supplyChain?.role || "N/A",
       serviceType: aiResult.supplyChain?.serviceType || "N/A"
     },
+    freightIntel: {
+      clientRole: aiResult.freightIntel?.clientRole || aiResult.companyInfo?.nature || "N/A",
+      legalIdentity: aiResult.freightIntel?.legalIdentity || "公开信息未找到",
+      riskCompliance: aiResult.freightIntel?.riskCompliance || "公开信息未找到",
+      creditRisk: aiResult.freightIntel?.creditRisk || "公开信息未找到",
+      tradeLanes: Array.isArray(aiResult.freightIntel?.tradeLanes) ? aiResult.freightIntel.tradeLanes : [],
+      originCountries: Array.isArray(aiResult.freightIntel?.originCountries) ? aiResult.freightIntel.originCountries : [],
+      preferredPorts: Array.isArray(aiResult.freightIntel?.preferredPorts) ? aiResult.freightIntel.preferredPorts : [],
+      shipmentVolume: aiResult.freightIntel?.shipmentVolume || "公开信息未找到（需估算）",
+      shipmentFrequency: aiResult.freightIntel?.shipmentFrequency || "公开信息未找到",
+      transportModes: Array.isArray(aiResult.freightIntel?.transportModes) ? aiResult.freightIntel.transportModes : [],
+      mainCommodities: Array.isArray(aiResult.freightIntel?.mainCommodities)
+        ? aiResult.freightIntel.mainCommodities
+        : (aiResult.businessScope?.coreProducts || []).slice(0, 8),
+      hsCodesHint: aiResult.freightIntel?.hsCodesHint || "公开信息未找到",
+      cargoCharacteristics: aiResult.freightIntel?.cargoCharacteristics || "公开信息未找到",
+      specialHandling: aiResult.freightIntel?.specialHandling || "公开信息未找到",
+      incumbentForwarders: aiResult.freightIntel?.incumbentForwarders || "公开信息未找到",
+      incotermsPreference: aiResult.freightIntel?.incotermsPreference || "公开信息未找到",
+      warehouseNetwork: aiResult.freightIntel?.warehouseNetwork || "公开信息未找到",
+      customsProfile: aiResult.freightIntel?.customsProfile || "公开信息未找到",
+      peakSeasons: aiResult.freightIntel?.peakSeasons || "公开信息未找到",
+      logisticsPainPoints: aiResult.freightIntel?.logisticsPainPoints || "公开信息未找到",
+      serviceOpportunities: aiResult.freightIntel?.serviceOpportunities || "公开信息未找到",
+      outreachAngles: Array.isArray(aiResult.freightIntel?.outreachAngles) ? aiResult.freightIntel.outreachAngles : [],
+    },
     targetAudience: aiResult.targetAudience || [],
     financials: {
       revenueEstimate: aiResult.financials?.revenueEstimate || "N/A",
@@ -818,14 +925,23 @@ export const analyzeCompany = async (domainOrName: string, mode: 'detailed' | 'e
         featureAnalysis: aiResult.productSummary?.featureAnalysis || "N/A"
     },
     socials: aiResult.socials || {},
-    products: (Array.isArray(aiResult.products) ? aiResult.products : []).map((p: any) => ({
+    products: (Array.isArray(aiResult.products) ? aiResult.products : []).slice(0, 8).map((p: any, idx: number) => ({
         ...p,
+        name: p.name || `品类 ${idx + 1}`,
         features: p.features || "N/A",
         colors: p.colors || "N/A",
-        packaging: p.packaging || "N/A"
+        packaging: p.packaging || "N/A",
+        ratio: p.ratio || `#${idx + 1}`
     })),
     marketTrends: aiResult.marketTrends || "N/A",
-    decisionMakers: (aiResult.decisionMakers || []).map((dm: any) => ({ ...dm, source: 'AI', isVerified: false })),
+    decisionMakers: (aiResult.decisionMakers || [])
+      .filter((dm: any) => !isPurchasingTitle(dm.title || ''))
+      .map((dm: any) => ({
+        ...dm,
+        type: classifyDecisionMakerType(dm.title || '') || dm.type || 'Other',
+        source: 'AI',
+        isVerified: false
+      })),
     strategy: {
       buyingOfficeLocation: aiResult.strategy?.buyingOfficeLocation || "N/A",
       actionPlan: aiResult.strategy?.actionPlan || []
@@ -884,7 +1000,14 @@ export const analyzeCompany = async (domainOrName: string, mode: 'detailed' | 'e
               }
           }
 
-          const newPeople = allExtra.filter(p => p.name && !existingNames.has(p.name.toLowerCase()));
+          const newPeople = allExtra
+            .filter(p => p.name && !existingNames.has(p.name.toLowerCase()))
+            .filter(p => !isPurchasingTitle(p.title || ''))
+            .filter(p => {
+              const t = classifyDecisionMakerType(p.title || '');
+              return t === 'CEO' || t === 'Board' || t === 'Logistics';
+            })
+            .map(p => ({ ...p, type: classifyDecisionMakerType(p.title || '') }));
           result.decisionMakers = [...result.decisionMakers, ...newPeople];
       } catch (e) { console.error("External API enrichment failed", e); }
   }
@@ -907,8 +1030,9 @@ export const analyzeCompany = async (domainOrName: string, mode: 'detailed' | 'e
 // Add this function to export
 export const searchPotentialClients = async (productKeyword: string, country: string, industry: string = '', clientType: string = '', limit: number = 30): Promise<ClientSearchResult[]> => {
   const prompt = `
-  Act as a high-performance B2B Database Crawler (楠哥的小助理). 
-  Use 联网搜索 to find REAL potential B2B clients in ${country} for product "${productKeyword}". 
+  Act as a high-performance B2B Database Crawler (货代业务助手). 
+  Use 联网搜索 to find REAL potential B2B clients in these target markets: ${country || 'Global'} for product "${productKeyword}". 
+  If multiple countries are listed, search across ALL of them and tag each result with its actual country.
   Industry: ${industry}. 
   Types to Include: ${clientType || 'Any B2B type (Importers, Distributors, Wholesalers, Brands)'}.
   
@@ -918,7 +1042,7 @@ export const searchPotentialClients = async (productKeyword: string, country: st
   - **Description MUST be in Simplified Chinese (简体中文).**
   
   Return a valid JSON Array ONLY. No text.
-  Format: [{ "name": "Company Name", "website": "www.example.com", "description": "Short Description in Chinese", "country": "${country}" }]
+  Format: [{ "name": "Company Name", "website": "www.example.com", "description": "Short Description in Chinese", "country": "Country Name" }]
   `;
   const text = await generateContentUnified('search', prompt, SYSTEM_INSTRUCTION, true);
   const results = extractJson(text, true);
@@ -1013,6 +1137,8 @@ interface QwenRuntimeConfig {
   apiKey: string;
   baseUrl: string;
   modelId: string;
+  /** 开发代理真实目标主机，如 https://token-plan.cn-beijing.maas.aliyuncs.com */
+  proxyOrigin?: string;
 }
 
 const DEFAULT_QWEN_BASE = 'https://dashscope.aliyuncs.com';
@@ -1031,17 +1157,38 @@ const normalizeQwenBaseUrl = (raw: string): string => {
 };
 
 const isQwenOpenAICompatible = (baseUrl: string): boolean =>
-  baseUrl.includes('/compatible-mode/v1');
+  baseUrl.includes('/compatible-mode/v1') ||
+  baseUrl.startsWith('/qwen-api') ||
+  baseUrl.startsWith('/token-plan-api');
 
-/** 开发环境走 Vite 代理，生产环境直连 */
-const effectiveQwenBaseUrl = (normalized: string): string => {
+/** 开发环境走 Vite 固定代理路径；生产环境直连 */
+const toDevProxyUrl = (normalized: string): { baseUrl: string; proxyOrigin?: string } => {
   const isDev =
     typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-  if (isDev && isDomesticQwenEndpoint(normalized)) {
-    return '/qwen-api/compatible-mode/v1';
+  if (!isDev || !isDomesticQwenEndpoint(normalized) || normalized.startsWith('/')) {
+    return { baseUrl: normalized };
   }
-  return normalized;
+  try {
+    const u = new URL(normalized);
+    const path = u.pathname.replace(/\/$/, '') || '/compatible-mode/v1';
+    // Token Plan 必须走独立代理，不能落到 dashscope
+    if (/token-plan/i.test(u.hostname)) {
+      return {
+        baseUrl: `/token-plan-api${path}`,
+        proxyOrigin: u.origin,
+      };
+    }
+    return {
+      baseUrl: `/qwen-api${path}`,
+      proxyOrigin: u.origin,
+    };
+  } catch {
+    return {
+      baseUrl: '/qwen-api/compatible-mode/v1',
+      proxyOrigin: 'https://dashscope.aliyuncs.com',
+    };
+  }
 };
 
 const resolveQwenConfig = async (override?: Partial<QwenRuntimeConfig>): Promise<QwenRuntimeConfig> => {
@@ -1055,10 +1202,12 @@ const resolveQwenConfig = async (override?: Partial<QwenRuntimeConfig>): Promise
   let cloudConfig = await getSupabaseApiConfig('qwen');
 
   // localStorage 优先（用户在本浏览器保存的最新配置）
-  const apiKey = override?.apiKey || localKey || cloudConfig?.apiKey || env.qwenApiKey || '';
+  const apiKey = sanitizeApiKey(
+    override?.apiKey || localKey || cloudConfig?.apiKey || env.qwenApiKey || ''
+  );
   const rawBase =
     override?.baseUrl || localBase || cloudConfig?.baseUrl || env.qwenBaseUrl || DEFAULT_QWEN_BASE;
-  const baseUrl = effectiveQwenBaseUrl(normalizeQwenBaseUrl(rawBase));
+  const { baseUrl, proxyOrigin } = toDevProxyUrl(normalizeQwenBaseUrl(rawBase));
   const modelId =
     override?.modelId || localModel || cloudConfig?.modelId || env.qwenModelId || DEFAULT_QWEN_MODEL;
 
@@ -1066,8 +1215,21 @@ const resolveQwenConfig = async (override?: Partial<QwenRuntimeConfig>): Promise
     throw new Error('未配置 Qwen API Key（请在管理后台、.env.local 或 Supabase 中配置）');
   }
 
-  console.log('[Qwen Config]', { baseUrl, modelId, hasKey: !!apiKey });
-  return { apiKey, baseUrl, modelId };
+  // Token Plan Key 必须配 token-plan 地址
+  if (apiKey.startsWith('sk-sp-') && !/token-plan/i.test(rawBase + baseUrl)) {
+    throw new Error(
+      '检测到 Token Plan Key（sk-sp-），但 Base URL 不是 token-plan 地址。请填写：https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
+    );
+  }
+
+  console.log('[Qwen Config]', {
+    baseUrl,
+    proxyOrigin,
+    modelId,
+    hasKey: !!apiKey,
+    keyPrefix: apiKey.slice(0, 6),
+  });
+  return { apiKey, baseUrl, modelId, proxyOrigin };
 };
 
 const extractQwenText = (data: any): string | null => {
@@ -1138,15 +1300,7 @@ export const callQwen = async (
   } = {}
 ): Promise<string> => {
   try {
-    const override = options.override
-      ? {
-          ...options.override,
-          ...(options.override.baseUrl
-            ? { baseUrl: effectiveQwenBaseUrl(normalizeQwenBaseUrl(options.override.baseUrl)) }
-            : {}),
-        }
-      : undefined;
-
+    // resolveQwenConfig 内会按后台 Base URL 做开发代理；此处只传原始 override
     return await callQwenChat(
       [
         { role: 'system', content: QWEN_SYSTEM },
@@ -1156,7 +1310,7 @@ export const callQwen = async (
         jsonMode: options.jsonMode,
         enableSearch: options.enableSearch,
         task: options.task,
-        override,
+        override: options.override,
       }
     );
   } catch (error) {
@@ -1171,28 +1325,42 @@ export const testQwenApiKey = async (
   modelId?: string,
   testSearch = false
 ): Promise<{ success: boolean; message: string }> => {
+  const cleanKey = sanitizeApiKey(apiKey);
+  const cleanBase = (baseUrl || '').trim();
+  const cleanModel = (modelId || '').trim();
+  const keyMeta = `Key前缀 ${cleanKey.slice(0, 6)}… 长度${cleanKey.length}；模型 ${cleanModel || '(默认)'}`;
+
   try {
     if (testSearch) {
       const text = await callQwen('搜索并告诉我今天日期，用一句话回答。', {
         override: {
-          apiKey: apiKey.trim(),
-          baseUrl: baseUrl?.trim(),
-          modelId: modelId?.trim(),
+          apiKey: cleanKey,
+          baseUrl: cleanBase,
+          modelId: cleanModel,
         },
         enableSearch: true,
       });
-      return { success: true, message: `千问联网搜索成功 ✅ ${text.slice(0, 80)}` };
+      return { success: true, message: `千问联网搜索成功 ✅ ${text.slice(0, 80)}\n(${keyMeta})` };
     }
     const text = await callQwen('Ping. Just reply with the word pong.', {
       override: {
-        apiKey: apiKey.trim(),
-        baseUrl: baseUrl?.trim(),
-        modelId: modelId?.trim(),
+        apiKey: cleanKey,
+        baseUrl: cleanBase,
+        modelId: cleanModel,
       },
     });
-    return { success: true, message: `Qwen 连接成功 ✅ 回复: ${text.slice(0, 50)}` };
+    return { success: true, message: `Qwen 连接成功 ✅ 回复: ${text.slice(0, 50)}\n(${keyMeta})` };
   } catch (e: any) {
-    return { success: false, message: `Qwen 测试失败: ${e.message}` };
+    let hint = '';
+    const msg = e?.message || String(e);
+    if (/401|invalid_api_key|Incorrect API key|Invalid API-key/i.test(msg)) {
+      hint =
+        '\n\n排查：1) 在 Token Plan 控制台重置并重新复制完整 sk-sp Key；2) Base URL 必须是 token-plan 地址；3) 或改用下方「按量付费」的 sk-ws Key + https://dashscope.aliyuncs.com/compatible-mode/v1';
+    }
+    return {
+      success: false,
+      message: `Qwen 测试失败: ${msg}\n(${keyMeta}；Base ${cleanBase || '(默认)'})${hint}`,
+    };
   }
 };
 

@@ -1,8 +1,10 @@
 
 import React, { useState } from 'react';
 import { DiscoveryState, ClientSearchResult } from '../types';
-import { Search, Globe, MapPin, Briefcase, Loader2, Plus, Layers } from 'lucide-react';
+import { Search, Globe, Briefcase, Loader2, Plus, Layers } from 'lucide-react';
 import { searchPotentialClients } from '../services/geminiService';
+import { CountryMultiSelect } from './CountryMultiSelect';
+import { toSearchCountryQuery } from '../data/continents';
 
 interface ClientFinderProps {
   state: DiscoveryState;
@@ -22,7 +24,8 @@ export const ClientFinder: React.FC<ClientFinderProps> = ({ state, onStateChange
     setLoading(true);
     setErrorMsg(null);
     try {
-      const results = await searchPotentialClients(state.product, state.country, state.industry, state.clientType);
+      const countryQuery = toSearchCountryQuery(state.country);
+      const results = await searchPotentialClients(state.product, countryQuery, state.industry, state.clientType);
       onStateChange({ ...state, results, hasSearched: true });
       setSelectedIndices(new Set());
     } catch (e: any) {
@@ -66,16 +69,10 @@ export const ClientFinder: React.FC<ClientFinderProps> = ({ state, onStateChange
           </div>
           <div>
             <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">目标国家 (Country)</label>
-            <div className="relative">
-              <MapPin className="absolute left-4 top-3.5 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                value={state.country} 
-                onChange={e => onStateChange({ ...state, country: e.target.value })}
-                className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 font-bold"
-                placeholder="例如: USA"
-              />
-            </div>
+            <CountryMultiSelect
+              value={state.country}
+              onChange={country => onStateChange({ ...state, country })}
+            />
           </div>
           <div>
             <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">客户类型</label>

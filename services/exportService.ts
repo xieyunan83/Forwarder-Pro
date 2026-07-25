@@ -155,7 +155,7 @@ export const exportToPPT = (data: AnalysisResult) => {
     }
     const pptx = new PptxGenJS();
     pptx.layout = 'LAYOUT_16x9';
-    pptx.author = '楠哥的小助理';
+    pptx.author = '货代业务助手';
     pptx.title = sanitize(data.companyInfo.name);
 
     generateAnalysisSlides(pptx, data);
@@ -195,7 +195,7 @@ export const exportBatchAnalysisToPPT = async (analyses: AnalysisResult[]) => {
         for (const analysis of analyses) {
             const pptx = new PptxGenJS();
             pptx.layout = 'LAYOUT_16x9';
-            pptx.author = '楠哥的小助理';
+            pptx.author = '货代业务助手';
             pptx.title = `${sanitize(analysis.companyInfo.name)} Analysis`;
 
             generateAnalysisSlides(pptx, analysis);
@@ -214,7 +214,7 @@ export const exportBatchAnalysisToPPT = async (analyses: AnalysisResult[]) => {
         // NOTE: This uses the first client's "businessScope" as rudimentary context if available
         const strategyPptx = new PptxGenJS();
         strategyPptx.layout = 'LAYOUT_16x9';
-        strategyPptx.author = '楠哥的小助理';
+        strategyPptx.author = '货代业务助手';
         strategyPptx.title = `Master Outreach Strategy`;
 
         const slide = strategyPptx.addSlide();
@@ -266,7 +266,7 @@ export const exportAutomationReportToPPT = (result: AutomationResult) => {
     try {
         const pptx = new PptxGenJS();
         pptx.layout = 'LAYOUT_16x9';
-        pptx.author = '楠哥的小助理';
+        pptx.author = '货代业务助手';
         pptx.title = `${sanitize(result.clientName)} - 开发报告`;
 
         addAutomationSlides(pptx, result);
@@ -347,7 +347,7 @@ const createEmailSlide = (pptx: any, title: string, content: string) => {
  */
 const generateAnalysisSlides = (pptx: any, data: AnalysisResult) => {
     const addFooter = (slide: any) => {
-        slide.addText(`楠哥的小助理 深度报告 | ${sanitize(data.companyInfo.name)} | 机密资料`, { 
+        slide.addText(`货代业务助手 深度报告 | ${sanitize(data.companyInfo.name)} | 机密资料`, { 
             x: 0.5, y: 5.3, w: 9, h: 0.3, 
             fontSize: 8, color: "94A3B8", align: "center", valign: "middle" 
         });
@@ -364,7 +364,7 @@ const generateAnalysisSlides = (pptx: any, data: AnalysisResult) => {
     slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.1, h: 5.6, fill: COLORS.ACCENT_BLUE });
     slide.addShape(pptx.ShapeType.triangle, { x: 8.5, y: 0, w: 1.5, h: 1.5, fill: COLORS.ACCENT_BLUE, flipV: true });
     
-    slide.addText("楠哥的小助理 · TRADE SCOUT PRO", { 
+    slide.addText("货代业务助手 · TRADE SCOUT PRO", { 
         x: 0.5, y: 0.5, h: 0.5, 
         fontSize: 12, bold: true, color: COLORS.ACCENT_BLUE, 
         letterSpacing: 2, align: 'left', valign: 'middle' 
@@ -443,7 +443,7 @@ const generateAnalysisSlides = (pptx: any, data: AnalysisResult) => {
     const finTable = [
         [{ text: "预估年营收", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(data.financials.revenueEstimate) }],
         [{ text: "结算方式", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(data.financials.paymentTerms) }],
-        [{ text: "知识产权", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(data.financials.ipInfo) }],
+        [{ text: "运费信用风险", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(data.freightIntel?.creditRisk || data.financials.ipInfo) }],
     ];
     slide.addTable(finTable, { x: 0.7, y: 1.5, w: 3.6, fontSize: 9, rowH: 0.4, border: { pt: 0.5, color: "F1F5F9" }, valign: 'middle' });
 
@@ -521,25 +521,98 @@ const generateAnalysisSlides = (pptx: any, data: AnalysisResult) => {
 
     slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 1.2, w: 4.4, h: 1.8, ...boxStyle });
     slide.addText("业务范围 (Scope)", { x: 0.7, y: 1.4, ...titleStyle });
-    slide.addText(`核心产品: ${data.businessScope.coreProducts.join(', ')}\n\n品牌定位: ${data.businessScope.brandPositioning}\n\n价格敏感度: ${data.businessScope.priceSensitivity}`, 
+    slide.addText(`核心品类: ${data.businessScope.coreProducts.join(', ')}\n\n品牌定位: ${data.businessScope.brandPositioning}\n\n价格敏感度: ${data.businessScope.priceSensitivity}`, 
         { x: 0.7, y: 1.7, w: 4.0, h: 1.2, ...contentStyle });
 
     slide.addShape(pptx.ShapeType.rect, { x: 5.1, y: 1.2, w: 4.4, h: 1.8, ...boxStyle });
     slide.addText("供应链角色 (Supply Chain)", { x: 5.3, y: 1.4, ...titleStyle });
-    slide.addText(`角色: ${data.supplyChain.role}\n\n服务模式: ${data.supplyChain.serviceType}\n\n目标群体: ${data.targetAudience.join(', ')}`,
+    slide.addText(`角色: ${data.supplyChain.role}\n\n服务依赖: ${data.supplyChain.serviceType}\n\n目标市场: ${data.targetAudience.join(', ')}`,
         { x: 5.3, y: 1.7, w: 4.0, h: 1.2, ...contentStyle });
 
     slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 3.2, w: 9.0, h: 1.8, ...boxStyle });
-    slide.addText("销售渠道与采购习惯 (Channels & Procurement)", { x: 0.7, y: 3.4, ...titleStyle });
-    slide.addText(`销售渠道: ${data.businessModel.channels.join(', ')}\n\n电商布局: ${data.businessModel.ecommercePresence.join(', ')}\n\n采购习惯: ${data.businessModel.procurementInfo}`,
+    slide.addText("销售渠道与进口货源 (Channels & Import Sourcing)", { x: 0.7, y: 3.4, ...titleStyle });
+    slide.addText(`销售渠道: ${data.businessModel.channels.join(', ')}\n\n电商布局: ${data.businessModel.ecommercePresence.join(', ')}\n\n进口货源结构: ${data.businessModel.procurementInfo}`,
         { x: 0.7, y: 3.7, w: 8.6, h: 1.2, ...contentStyle });
+
+    // --- SLIDE 4.5+: FREIGHT INTEL (货代专属背调) ---
+    const fi = data.freightIntel;
+    if (fi) {
+        // Trade lanes & volume
+        slide = pptx.addSlide();
+        addFooter(slide);
+        slide.addShape(pptx.ShapeType.rect, headerRect);
+        slide.addText("04B 贸易航线与货量 (Trade Lanes & Volume)", headerStyle);
+
+        const laneTable = [
+            [{ text: "客户角色", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(fi.clientRole) }],
+            [{ text: "主要航线", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(fi.tradeLanes.join('；') || '公开信息未找到') }],
+            [{ text: "起运国", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(fi.originCountries.join(', ') || '公开信息未找到') }],
+            [{ text: "常用港口", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(fi.preferredPorts.join('；') || '公开信息未找到') }],
+            [{ text: "年进口量级", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(fi.shipmentVolume) }],
+            [{ text: "出货频次", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(fi.shipmentFrequency) }],
+            [{ text: "运输方式", options: { bold: true, fill: "F8FAFC" } }, { text: sanitize(fi.transportModes.join(', ') || '公开信息未找到') }],
+        ];
+        slide.addTable(laneTable, {
+            x: 0.5, y: 1.1, w: 9.0,
+            fontSize: 10, rowH: 0.48,
+            border: { pt: 0.5, color: "F1F5F9" },
+            valign: 'middle'
+        });
+
+        // Cargo & compliance
+        slide = pptx.addSlide();
+        addFooter(slide);
+        slide.addShape(pptx.ShapeType.rect, headerRect);
+        slide.addText("04C 货类特征与合规 (Cargo & Compliance)", headerStyle);
+
+        slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 1.1, w: 4.4, h: 4.0, ...boxStyle });
+        slide.addText("货类与操作", { x: 0.7, y: 1.25, ...titleStyle });
+        slide.addText(
+            `主要货类: ${fi.mainCommodities.join(', ') || 'N/A'}\n\nHS线索: ${fi.hsCodesHint}\n\n货型特征: ${fi.cargoCharacteristics}\n\n特殊操作: ${fi.specialHandling}\n\n旺季: ${fi.peakSeasons}`,
+            { x: 0.7, y: 1.65, w: 4.0, h: 3.2, ...contentStyle }
+        );
+
+        slide.addShape(pptx.ShapeType.rect, { x: 5.1, y: 1.1, w: 4.4, h: 4.0, ...boxStyle });
+        slide.addText("Know Your Shipper", { x: 5.3, y: 1.25, ...titleStyle });
+        slide.addText(
+            `主体合法性: ${fi.legalIdentity}\n\n制裁/合规风险: ${fi.riskCompliance}\n\n运费信用风险: ${fi.creditRisk}\n\n清关画像: ${fi.customsProfile}`,
+            { x: 5.3, y: 1.65, w: 4.0, h: 3.2, ...contentStyle }
+        );
+
+        // Logistics setup & opportunity
+        slide = pptx.addSlide();
+        addFooter(slide);
+        slide.addShape(pptx.ShapeType.rect, headerRect);
+        slide.addText("04D 现有物流与切入机会 (Logistics Opportunity)", headerStyle);
+
+        slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 1.1, w: 4.4, h: 2.2, ...boxStyle });
+        slide.addText("现有物流布局", { x: 0.7, y: 1.25, ...titleStyle });
+        slide.addText(
+            `现有货代/承运商: ${fi.incumbentForwarders}\n\n贸易术语: ${fi.incotermsPreference}\n\n仓储/派送: ${fi.warehouseNetwork}`,
+            { x: 0.7, y: 1.65, w: 4.0, h: 1.5, ...contentStyle }
+        );
+
+        slide.addShape(pptx.ShapeType.rect, { x: 5.1, y: 1.1, w: 4.4, h: 2.2, ...boxStyle });
+        slide.addText("痛点与服务机会", { x: 5.3, y: 1.25, ...titleStyle });
+        slide.addText(
+            `物流痛点: ${fi.logisticsPainPoints}\n\n可切入服务: ${fi.serviceOpportunities}`,
+            { x: 5.3, y: 1.65, w: 4.0, h: 1.5, ...contentStyle }
+        );
+
+        slide.addShape(pptx.ShapeType.rect, { x: 0.5, y: 3.5, w: 9.0, h: 1.6, ...boxStyle });
+        slide.addText("开发切入角度 (Outreach Angles)", { x: 0.7, y: 3.65, ...titleStyle });
+        const angles = (fi.outreachAngles && fi.outreachAngles.length)
+            ? fi.outreachAngles.map((a, i) => `${i + 1}. ${sanitize(a)}`).join('\n')
+            : '暂无切入角度';
+        slide.addText(angles, { x: 0.7, y: 4.0, w: 8.6, h: 1.0, ...contentStyle });
+    }
 
     // --- SLIDE 5: PRODUCT DEPTH ANALYSIS (背调重点 - NEW) ---
     if (data.productSummary) {
         slide = pptx.addSlide();
         addFooter(slide);
         slide.addShape(pptx.ShapeType.rect, headerRect);
-        slide.addText("05 产品深度分析 (Product Depth Analysis)", headerStyle);
+        slide.addText("05 品类与货运特征 (Category & Cargo Profile)", headerStyle);
 
         const summaryBox = (title: string, content: string, x: number, y: number, w: number, h: number, icon: string) => {
             slide.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: "FFFFFF", line: { color: COLORS.ACCENT_BLUE, width: 1 }, r: 0.1 });
@@ -550,11 +623,11 @@ const generateAnalysisSlides = (pptx: any, data: AnalysisResult) => {
             });
         };
 
-        summaryBox("市场喜好 (Market Preference)", data.productSummary.marketPreference, 0.5, 1.0, 4.4, 1.75, "📊");
-        summaryBox("功能分析 (Feature Analysis)", data.productSummary.featureAnalysis, 5.1, 1.0, 4.4, 1.75, "⚙️");
-        summaryBox("推荐产品 (Recommended)", data.productSummary.recommendedProducts, 0.5, 2.85, 4.4, 1.75, "💡");
-        summaryBox("包装风格 (Packaging)", data.productSummary.packagingAnalysis, 5.1, 2.85, 4.4, 1.75, "📦");
-        summaryBox("颜色偏好 (Color Preference)", data.productSummary.colorPreference, 0.5, 4.7, 9.0, 0.75, "🎨");
+        summaryBox("品类与货源结构", data.productSummary.marketPreference, 0.5, 1.0, 4.4, 1.75, "📊");
+        summaryBox("货运特征分析", data.productSummary.featureAnalysis, 5.1, 1.0, 4.4, 1.75, "⚙️");
+        summaryBox("货代服务建议", data.productSummary.recommendedProducts, 0.5, 2.85, 4.4, 1.75, "💡");
+        summaryBox("包装装箱特点", data.productSummary.packagingAnalysis, 5.1, 2.85, 4.4, 1.75, "📦");
+        summaryBox("出货节奏 / 季节性", data.productSummary.colorPreference, 0.5, 4.7, 9.0, 0.75, "🗓️");
     }
 
     // --- SLIDE 5.5: ACTION PLAN (Separated to avoid overlap) ---

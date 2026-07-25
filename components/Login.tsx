@@ -38,7 +38,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     <div className="min-h-screen min-h-[100dvh] flex flex-col items-center justify-center bg-[#F4F7FA] p-4 sm:p-6">
       <div className="text-center mb-8 sm:mb-12 px-2">
         <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-800 tracking-tight mb-3 sm:mb-4">
-          货代业务小助理 <span className="text-blue-600">Pro</span>
+          货代业务助手
         </h1>
         <p className="text-base sm:text-lg md:text-xl text-slate-500 font-medium tracking-wide">外贸企业情报平台</p>
       </div>

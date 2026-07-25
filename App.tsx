@@ -15,12 +15,13 @@ import { ModuleSimilar } from './components/ModuleSimilar';
 import { ModulePromoGenerator } from './components/ModulePromoGenerator';
 import { ModuleClientCRM } from './components/ModuleClientCRM';
 import { ModuleEmailCampaign } from './components/ModuleEmailCampaign'; 
+import { ModuleImageGen } from './components/ModuleImageGen';
 import { ClientFinder } from './components/ClientFinder';
 import { Login } from './components/Login';
-import { loadUsersWithMigration, saveUsersToStorage } from './services/auth';
+import { loadUsersWithMigration, saveUsersToStorage, loadUsersFromStorage } from './services/auth';
 import { AdminDashboard } from './components/AdminDashboard';
 import { 
-  LayoutDashboard, PackageSearch, Users, PenTool, Network, Search, Loader2, Menu, Globe, Zap, FileSpreadsheet, History, Clock, ChevronRight, AlertTriangle, RefreshCw, LogOut, Briefcase, Ruler, CheckCircle2, Hourglass, StopCircle, PlayCircle, Layers, Mail, Cloud, Download, Info, Link2, X, Database, Github
+  LayoutDashboard, PackageSearch, Users, PenTool, Network, Search, Loader2, Menu, Globe, Zap, FileSpreadsheet, History, Clock, ChevronRight, AlertTriangle, RefreshCw, LogOut, Briefcase, Ruler, CheckCircle2, Hourglass, StopCircle, PlayCircle, Layers, Mail, Cloud, Download, Info, Link2, X, Database, Github, Image as ImageIcon
 } from 'lucide-react';
 
 declare global {
@@ -95,6 +96,9 @@ const App: React.FC = () => {
         setUsers(loaded);
       } catch (e) {
         console.error('Failed to load users', e);
+        // 迁移失败时仍尽量从本地读取，避免管理后台用户列表空白
+        const fallback = loadUsersFromStorage();
+        if (fallback.length > 0) setUsers(fallback);
       } finally {
         setAuthReady(true);
       }
@@ -579,7 +583,7 @@ const App: React.FC = () => {
       );
   }
 
-  const alwaysActiveModules = [ModuleType.DISCOVERY, ModuleType.PROMO_GENERATOR, ModuleType.CLIENT_CRM, ModuleType.STRATEGY, ModuleType.EMAIL_CAMPAIGN];
+  const alwaysActiveModules = [ModuleType.DISCOVERY, ModuleType.PROMO_GENERATOR, ModuleType.CLIENT_CRM, ModuleType.STRATEGY, ModuleType.EMAIL_CAMPAIGN, ModuleType.IMAGE_GEN];
 
   return (
     <div className="flex min-h-screen min-h-[100dvh] bg-slate-100 overflow-hidden">
@@ -591,7 +595,7 @@ const App: React.FC = () => {
         <div className="p-6 border-b flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg text-white shadow-md shadow-blue-100"><Zap size={20} /></div>
             <div>
-                <h1 className="text-lg font-black text-slate-800 tracking-tight leading-tight">楠哥的小助理 <span className="text-blue-600">Pro</span></h1>
+                <h1 className="text-lg font-black text-slate-800 tracking-tight leading-tight">货代业务助手</h1>
                 <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span>{currentUser.username}</div>
             </div>
         </div>
@@ -626,6 +630,7 @@ const App: React.FC = () => {
             { id: ModuleType.SIMILAR, label: '同类推荐', sub: 'Similar', icon: Network },
             { id: ModuleType.CLIENT_CRM, label: '客户管理', sub: 'CRM', icon: Briefcase },
             { id: ModuleType.EMAIL_CAMPAIGN, label: '邮件营销', sub: 'DirectMail', icon: Mail }, 
+            { id: ModuleType.IMAGE_GEN, label: '文生图', sub: 'ImageGen', icon: ImageIcon },
             { id: ModuleType.PROMO_GENERATOR, label: '营销工具', sub: 'Tools', icon: Ruler },
           ].map(item => (
             <button key={item.id} onClick={() => { setActiveModule(item.id); setMobileMenuOpen(false); }} disabled={!analysisData && !alwaysActiveModules.includes(item.id)} className={`w-full flex items-center gap-3 px-3 sm:px-4 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl text-sm font-bold transition-all touch-manipulation ${activeModule === item.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-30'}`}>
@@ -746,7 +751,7 @@ const App: React.FC = () => {
             <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center backdrop-blur-sm animate-fade-in">
               <Loader2 className="animate-spin w-16 h-16 text-blue-600 mb-6" />
               <h3 className="text-2xl font-black text-slate-800">正在深度挖掘情报...</h3>
-              <p className="text-slate-500 mt-2 font-medium">抓取官网架构、LinkedIn 决策人、及海关采购记录中...</p>
+              <p className="text-slate-500 mt-2 font-medium">抓取航线货量、合规风险、进口物流布局及决策人信息中...</p>
             </div>
           )}
           
@@ -782,6 +787,9 @@ const App: React.FC = () => {
                 )}
                 {activeModule === ModuleType.EMAIL_CAMPAIGN && (
                     <ModuleEmailCampaign crmClients={crmClients} onAddClients={handleAddClients} />
+                )}
+                {activeModule === ModuleType.IMAGE_GEN && (
+                    <ModuleImageGen />
                 )}
                 {activeModule === ModuleType.PROMO_GENERATOR && (
                     <ModulePromoGenerator 

@@ -8,7 +8,8 @@ export enum ModuleType {
   SIMILAR = 'similar',
   PROMO_GENERATOR = 'promo_generator',
   CLIENT_CRM = 'client_crm',
-  EMAIL_CAMPAIGN = 'email_campaign' // New Module
+  EMAIL_CAMPAIGN = 'email_campaign',
+  IMAGE_GEN = 'image_gen',
 }
 
 export interface User {
@@ -76,7 +77,7 @@ export interface DecisionMaker {
   yearsActive?: string;
   emailGuess?: string;
   linkedin?: string;
-  type: 'CEO' | 'Buyer' | 'Other';
+  type: 'CEO' | 'Board' | 'Logistics' | 'Other';
   source: 'AI' | 'AI (Pattern Guess)' | 'Hunter.io' | 'Findymail' | 'AnymailFinder' | 'Manual';
   isVerified: boolean;
   confidence?: number;
@@ -147,6 +148,53 @@ export interface WebsiteCategory {
   items: string[];
 }
 
+export interface FreightIntel {
+  /** 客户在供应链中的角色：进口商/品牌方/分销商/零售商等 */
+  clientRole: string;
+  /** 主体合法性与注册信息（Know Your Shipper） */
+  legalIdentity: string;
+  /** 制裁名单、合规与负面舆情风险 */
+  riskCompliance: string;
+  /** 运费结算信誉与账期风险 */
+  creditRisk: string;
+  /** 主要贸易航线，如 China → US West Coast */
+  tradeLanes: string[];
+  /** 主要起运国 / 采购来源国 */
+  originCountries: string[];
+  /** 常用起运港 / 目的港 */
+  preferredPorts: string[];
+  /** 年进口量级估算（TEU / 票数 / 货值） */
+  shipmentVolume: string;
+  /** 出货/补货频次与节奏 */
+  shipmentFrequency: string;
+  /** 运输方式：海运整柜、拼箱、空运、快递等 */
+  transportModes: string[];
+  /** 主要货类 / 品类 */
+  mainCommodities: string[];
+  /** HS 编码或海关品类线索 */
+  hsCodesHint: string;
+  /** 货型特征：泡货、重货、危险品、温控、超尺寸等 */
+  cargoCharacteristics: string;
+  /** 特殊操作与合规要求（FDA、危品申报、木包装等） */
+  specialHandling: string;
+  /** 现有货代 / 船东 / 承运商线索 */
+  incumbentForwarders: string;
+  /** 常见贸易术语偏好：FOB / CIF / DDP 等 */
+  incotermsPreference: string;
+  /** 海外仓 / DC / 内陆派送布局 */
+  warehouseNetwork: string;
+  /** 清关能力与进口资质特点 */
+  customsProfile: string;
+  /** 旺季与季节性出货规律 */
+  peakSeasons: string;
+  /** 物流痛点（时效、成本、滞港、合规） */
+  logisticsPainPoints: string;
+  /** 货代可切入的服务机会 */
+  serviceOpportunities: string;
+  /** 开发话术 / 切入角度 */
+  outreachAngles: string[];
+}
+
 export interface AnalysisResult {
   companyInfo: {
     name: string;
@@ -181,6 +229,8 @@ export interface AnalysisResult {
     role: string;
     serviceType: string;
   };
+  /** 货代视角客户情报（航线、货量、合规、现有物流等） */
+  freightIntel?: FreightIntel;
   targetAudience: string[];
   financials: {
     revenueEstimate: string;

@@ -8,7 +8,7 @@ const LS_KEY = 'trade_scout_supabase_anon_key';
 const read = (key: string): string =>
   (process.env[key] as string | undefined) || '';
 
-/** 读取 Supabase 凭证：.env.local（Cursor 开发）→ bakedConfig（构建产物）→ localStorage（手动覆盖） */
+/** 读取 Supabase 凭证：.env.local → bakedConfig（构建产物）→ localStorage（手动覆盖） */
 export const getSupabaseConfig = (): { url: string; key: string } => {
   const envUrl = read('REACT_APP_SUPABASE_URL');
   const envKey = read('REACT_APP_SUPABASE_ANON_KEY');
@@ -66,7 +66,13 @@ export const env = {
   qwenApiKey: read('REACT_APP_QWEN_API_KEY'),
   qwenBaseUrl: read('REACT_APP_QWEN_BASE_URL'),
   qwenModelId: read('REACT_APP_QWEN_MODEL') || read('REACT_APP_QWEN_MODEL_ID'),
-  defaultAIModel: (read('REACT_APP_DEFAULT_AI_MODEL') || bakedAppConfig.defaultAIModel || 'qwen') as DefaultAIModel,
+  imageApiKey: read('REACT_APP_IMAGE_API_KEY') || read('REACT_APP_WANX_API_KEY'),
+  imageBaseUrl: read('REACT_APP_IMAGE_BASE_URL') || read('REACT_APP_WANX_BASE_URL'),
+  imageModelId: read('REACT_APP_IMAGE_MODEL') || read('REACT_APP_WANX_MODEL') || 'wan2.7-image',
+  defaultAIModel: ((): DefaultAIModel => {
+    const v = read('REACT_APP_DEFAULT_AI_MODEL') || bakedAppConfig.defaultAIModel || 'qwen';
+    return v === 'gemini' || v === 'auto' || v === 'qwen' ? v : 'qwen';
+  })(),
   hunterApiKey: read('HUNTER_API_KEY') || read('REACT_APP_HUNTER_API_KEY'),
   findymailApiKey: read('FINDYMAIL_API_KEY'),
   anymailFinderApiKey: read('ANYMAIL_FINDER_API_KEY'),

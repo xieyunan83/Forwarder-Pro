@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { getAllFilesFromDB, saveFileToDB, deleteFileFromDB } from '../services/db';
 import { testApiKey, testQwenApiKey } from '../services/geminiService';
+import { testImageApiKey } from '../services/imageService';
 import { saveApiConfig, getApiConfig, isSupabaseConfigured, saveKnowledgeFile, getKnowledgeFiles, deleteKnowledgeFile, resetSupabaseClient } from '../services/supabase';
 import { getSupabaseConfig, saveSupabaseConfig, clearSupabaseOverride, saveEmailSearchKeys, getEmailSearchKeys, env } from '../services/env';
 import { hashPassword, saveUsersToStorage, findUserByName, updateUserPassword } from '../services/auth';
@@ -59,6 +60,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
   const [qwenApiKey, setQwenApiKey] = useState('');
   const [qwenBaseUrl, setQwenBaseUrl] = useState('');
   const [qwenModelId, setQwenModelId] = useState('qwen-max');
+  const [imageApiKey, setImageApiKey] = useState('');
+  const [imageBaseUrl, setImageBaseUrl] = useState('https://token-plan.cn-beijing.maas.aliyuncs.com');
+  const [imageModelId, setImageModelId] = useState('wan2.7-image');
   const [defaultAIModel, setDefaultAIModel] = useState<'qwen' | 'gemini' | 'auto'>('qwen');
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseAnonKey, setSupabaseAnonKey] = useState('');
@@ -68,8 +72,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
   const [anymailFinderApiKey, setAnymailFinderApiKey] = useState('');
   const [testingApiId, setTestingApiId] = useState<string | null>(null);
   const [isTestingQwen, setIsTestingQwen] = useState(false);
+  const [isTestingImage, setIsTestingImage] = useState(false);
   const [ytLink, setYtLink] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [userModal, setUserModal] = useState<'add' | 'reset' | null>(null);
+  const [userModalTarget, setUserModalTarget] = useState('');
+  const [formUsername, setFormUsername] = useState('');
+  const [formPassword, setFormPassword] = useState('');
+  const [formError, setFormError] = useState('');
+  const [userSaving, setUserSaving] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('trade_scout_api_configs');
@@ -85,8 +96,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
     if (savedProxy) setProxyUrl(savedProxy);
 
     const savedModel = localStorage.getItem('trade_scout_default_ai_model') as 'qwen' | 'gemini' | 'auto' | null;
-    if (savedModel) setDefaultAIModel(savedModel);
-    else if (env.defaultAIModel) setDefaultAIModel(env.defaultAIModel);
+    if (savedModel === 'qwen' || savedModel === 'gemini' || savedModel === 'auto') setDefaultAIModel(savedModel);
+    else if (env.defaultAIModel === 'qwen' || env.defaultAIModel === 'gemini' || env.defaultAIModel === 'auto') {
+      setDefaultAIModel(env.defaultAIModel);
+    }
 
     const loadQwenKey = async () => {
       const localKey = localStorage.getItem('trade_scout_qwen_api_key');
@@ -112,6 +125,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
       }
     };
     loadQwenKey();
+
+    const loadImageKey = async () => {
+      const localKey = localStorage.getItem('trade_scout_image_api_key');
+      const localBase = localStorage.getItem('trade_scout_image_base_url');
+      const localModel = localStorage.getItem('trade_scout_image_model_id');
+      if (localKey) setImageApiKey(localKey);
+      if (localBase) setImageBaseUrl(localBase);
+      if (localModel) setImageModelId(localModel);
+
+      const cloudConfig = await getApiConfig('image');
+      if (cloudConfig?.apiKey) setImageApiKey(cloudConfig.apiKey);
+      if (cloudConfig?.baseUrl) setImageBaseUrl(cloudConfig.baseUrl);
+      if (cloudConfig?.modelId) setImageModelId(cloudConfig.modelId);
+
+      if (!localKey && !cloudConfig?.apiKey && env.imageApiKey) setImageApiKey(env.imageApiKey);
+      if (!localBase && !cloudConfig?.baseUrl && env.imageBaseUrl) setImageBaseUrl(env.imageBaseUrl);
+      if (!localModel && !cloudConfig?.modelId && env.imageModelId) setImageModelId(env.imageModelId);
+    };
+    loadImageKey();
 
     const sb = getSupabaseConfig();
     setSupabaseUrl(sb.url);
@@ -192,6 +224,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
       localStorage.setItem('trade_scout_qwen_model_id', qwenModelId.trim());
     }
 
+    if (imageApiKey.trim()) {
+      localStorage.setItem('trade_scout_image_api_key', imageApiKey.trim());
+    }
+    if (imageBaseUrl.trim()) {
+      localStorage.setItem('trade_scout_image_base_url', imageBaseUrl.trim());
+    }
+    if (imageModelId.trim()) {
+      localStorage.setItem('trade_scout_image_model_id', imageModelId.trim());
+    }
+
     saveEmailSearchKeys({
       hunter: hunterApiKey,
       findymail: findymailApiKey,
@@ -204,6 +246,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
         apiKey: qwenApiKey.trim(),
         baseUrl: qwenBaseUrl.trim() || undefined,
         modelId: qwenModelId.trim() || 'qwen-max',
+      });
+    }
+
+    if (imageApiKey.trim() && isSupabaseConfigured()) {
+      await saveApiConfig({
+        provider: 'image',
+        apiKey: imageApiKey.trim(),
+        baseUrl: imageBaseUrl.trim() || undefined,
+        modelId: imageModelId.trim() || 'wan2.7-image',
       });
     }
 
@@ -238,6 +289,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
       alert(result.message);
     } finally {
       setIsTestingQwen(false);
+    }
+  };
+
+  const handleTestImage = async () => {
+    if (!imageApiKey.trim() && !qwenApiKey.trim()) {
+      alert('请先填写文生图 API Key（或先配置千问/百炼 Key）');
+      return;
+    }
+    setIsTestingImage(true);
+    try {
+      const result = await testImageApiKey(imageApiKey.trim() || qwenApiKey.trim(), imageBaseUrl, imageModelId);
+      alert(result.message);
+    } finally {
+      setIsTestingImage(false);
     }
   };
 
@@ -286,6 +351,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
     setLocalApiConfigs(next);
   };
 
+  const openAddUserModal = () => {
+    setFormUsername('');
+    setFormPassword('');
+    setFormError('');
+    setUserModalTarget('');
+    setUserModal('add');
+  };
+
+  const openResetPasswordModal = (username: string) => {
+    setFormUsername(username);
+    setFormPassword('');
+    setFormError('');
+    setUserModalTarget(username);
+    setUserModal('reset');
+  };
+
+  const closeUserModal = () => {
+    if (userSaving) return;
+    setUserModal(null);
+    setFormError('');
+    setFormPassword('');
+  };
+
   const handleDeleteUser = (username: string) => {
     if (username === 'admin') return;
     if (confirm(`确定要删除用户 ${username} 吗？`)) {
@@ -295,43 +383,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
     }
   };
 
-  const handleAddUser = async () => {
-    const username = prompt('请输入新用户名:');
-    if (!username?.trim()) return;
-    const trimmed = username.trim();
-    if (findUserByName(users, trimmed)) {
-      alert('该用户名已存在');
+  const handleSubmitUserModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    const pwd = formPassword.trim();
+    if (pwd.length < 6) {
+      setFormError('密码至少需要 6 位');
       return;
     }
-    const pwd = prompt('请设置登录密码（至少 6 位）:');
-    if (!pwd || pwd.length < 6) {
-      alert('密码至少需要 6 位');
-      return;
-    }
-    const newUser: User = {
-      username: trimmed,
-      role: 'user',
-      password: await hashPassword(pwd),
-      isFirstLogin: true,
-      createdAt: Date.now()
-    };
-    const next = [...users, newUser];
-    setUsers(next);
-    saveUsersToStorage(next);
-    alert(`用户 ${trimmed} 已创建，请使用刚设置的密码登录`);
-  };
 
-  const handleResetPassword = async (username: string) => {
-    const pwd = prompt(`为「${username}」设置新密码（至少 6 位）:`);
-    if (!pwd || pwd.length < 6) {
-      alert('密码至少需要 6 位');
-      return;
+    setUserSaving(true);
+    try {
+      if (userModal === 'add') {
+        const trimmed = formUsername.trim();
+        if (!trimmed) {
+          setFormError('请输入用户名');
+          return;
+        }
+        if (findUserByName(users, trimmed)) {
+          setFormError('该用户名已存在');
+          return;
+        }
+        const newUser: User = {
+          username: trimmed,
+          role: 'user',
+          password: await hashPassword(pwd),
+          isFirstLogin: true,
+          createdAt: Date.now()
+        };
+        const next = [...users, newUser];
+        setUsers(next);
+        saveUsersToStorage(next);
+        setUserModal(null);
+        setFormPassword('');
+      } else if (userModal === 'reset' && userModalTarget) {
+        const hashed = await hashPassword(pwd);
+        const next = updateUserPassword(users, userModalTarget, hashed);
+        setUsers(next);
+        saveUsersToStorage(next);
+        setUserModal(null);
+        setFormPassword('');
+      }
+    } catch (err) {
+      console.error('User management failed', err);
+      setFormError('操作失败：当前环境可能不支持安全加密（请用 localhost 访问，不要用局域网 IP）');
+    } finally {
+      setUserSaving(false);
     }
-    const hashed = await hashPassword(pwd);
-    const next = updateUserPassword(users, username, hashed);
-    setUsers(next);
-    saveUsersToStorage(next);
-    alert(`已重置 ${username} 的密码，请用新密码登录`);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -492,7 +590,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
                     <h3 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
                       <Key className="text-blue-600" /> API 密钥配置池
                     </h3>
-                    <p className="text-xs sm:text-sm text-slate-400 font-bold mt-1">国内千问 API — 支持联网搜索、背景调查、PPT 导出等全部功能</p>
+                    <p className="text-xs sm:text-sm text-slate-400 font-bold mt-1">
+                      千问 / 文生图密钥 — 请向下滚动查看全部配置区
+                    </p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   <button onClick={handleSaveApiConfigs} className="bg-slate-900 hover:bg-slate-800 text-white px-4 sm:px-6 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg touch-manipulation">
@@ -557,7 +657,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
                         className="w-full bg-white border border-emerald-100 rounded-xl px-4 py-3 font-bold text-sm"
                       />
                       <p className="text-[10px] text-slate-400 font-bold mt-2">
-                        Cursor 本地开发：在项目根目录 .env.local 中配置即可自动连接。此处仅用于手动覆盖。
+                        本地开发也可在项目根目录 <code className="bg-slate-100 px-1 rounded">.env.local</code> 中配置 Supabase；此处仅用于手动覆盖。
                       </p>
                     </div>
                     <div className="md:col-span-2 flex justify-end gap-3">
@@ -581,7 +681,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
                         type="password"
                         value={qwenApiKey}
                         onChange={e => setQwenApiKey(e.target.value)}
-                        placeholder="sk-ws-... (MaaS 工作空间 Key)"
+                        placeholder="sk-sp-...（Token Plan）或 sk-ws-...（按量/工作空间）"
                         className="w-full bg-white border border-emerald-100 rounded-xl px-4 py-3 font-bold text-sm"
                       />
                     </div>
@@ -591,11 +691,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
                         type="text"
                         value={qwenBaseUrl}
                         onChange={e => setQwenBaseUrl(e.target.value)}
-                        placeholder="https://ws-xxx.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+                        placeholder="https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
                         className="w-full bg-white border border-emerald-100 rounded-xl px-4 py-3 font-bold text-sm"
                       />
                       <p className="text-[10px] text-slate-400 font-bold mt-2">
-                        联网搜索、客户搜索、深度调查均走千问 enable_search。建议使用 qwen-plus 或 qwen-max。
+                        Token Plan 个人版请用 token-plan 地址 + sk-sp Key + 套餐内模型（如 qwen3.7-plus）。
+                        按量付费才用 dashscope 地址。Key 与 Base URL 必须同一套，不要混用。
                       </p>
                     </div>
                   </div>
@@ -615,6 +716,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
                     >
                       {isTestingQwen ? <Loader2 size={16} className="animate-spin" /> : <Globe size={16} />}
                       测试联网搜索
+                    </button>
+                  </div>
+                </div>
+
+                {/* 文生图 API */}
+                <div className="bg-fuchsia-50/50 border border-fuchsia-100 rounded-2xl p-6 space-y-4">
+                  <div className="flex items-center gap-2 text-fuchsia-800 font-black text-sm">
+                    <Image size={16} /> 文生图 API（通义万相）
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold leading-relaxed">
+                    Token Plan：与千问相同的 sk-sp Key + token-plan 主机 + 模型 wan2.7-image（套餐支持列表里的「图片生成」）。
+                    按量付费：sk-ws / sk- Key + https://dashscope.aliyuncs.com。Key 留空时会复用上方千问 Key。
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">文生图 API Key</label>
+                      <input
+                        type="password"
+                        value={imageApiKey}
+                        onChange={e => setImageApiKey(e.target.value)}
+                        placeholder="sk-sp-...（Token Plan，可与千问同一把）"
+                        className="w-full bg-white border border-fuchsia-100 rounded-xl px-4 py-3 font-bold text-sm"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">API Base URL</label>
+                      <input
+                        type="text"
+                        value={imageBaseUrl}
+                        onChange={e => setImageBaseUrl(e.target.value)}
+                        placeholder="https://token-plan.cn-beijing.maas.aliyuncs.com"
+                        className="w-full bg-white border border-fuchsia-100 rounded-xl px-4 py-3 font-bold text-sm"
+                      />
+                      <p className="text-[10px] text-slate-400 font-bold mt-2">
+                        填 token-plan 主机即可（带或不带 /compatible-mode/v1 都行）。文生图实际调用 multimodal-generation 接口，不是 chat。
+                      </p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">文生图模型</label>
+                      <input
+                        type="text"
+                        value={imageModelId}
+                        onChange={e => setImageModelId(e.target.value)}
+                        placeholder="wan2.7-image / wan2.7-image-pro"
+                        className="w-full bg-white border border-fuchsia-100 rounded-xl px-4 py-3 font-bold text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleTestImage}
+                      disabled={isTestingImage}
+                      className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white px-6 py-3 rounded-xl font-black flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {isTestingImage ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} fill="currentColor" />}
+                      测试文生图
                     </button>
                   </div>
                 </div>
@@ -766,76 +923,89 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
             {activeTab === 'users' && (
               <div className="space-y-4 sm:space-y-8 animate-fade-in">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-                  <h3 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
-                    <Users className="text-blue-600" /> 系统用户管理
-                  </h3>
-                  <button onClick={handleAddUser} className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-6 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 touch-manipulation w-full sm:w-auto">
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-2">
+                      <Users className="text-blue-600" /> 系统用户管理
+                    </h3>
+                    <p className="text-xs text-slate-400 font-bold mt-1">账号保存在本浏览器本地，换设备不会自动同步</p>
+                  </div>
+                  <button onClick={openAddUserModal} className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-6 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 touch-manipulation w-full sm:w-auto">
                     <Plus size={20} /> 添加用户
                   </button>
                 </div>
 
-                {/* Mobile cards */}
-                <div className="md:hidden space-y-3">
-                  {users.map(user => (
-                    <div key={user.username} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="font-black text-slate-800">{user.username}</div>
-                        <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {user.role}
-                        </span>
-                      </div>
-                      <div className="flex gap-3">
-                        <button onClick={() => handleResetPassword(user.username)} className="flex-1 text-center py-2 rounded-xl bg-blue-50 text-blue-600 text-xs font-black touch-manipulation">
-                          重置密码
-                        </button>
-                        {user.username !== 'admin' && (
-                          <button onClick={() => handleDeleteUser(user.username)} className="px-4 py-2 rounded-xl bg-red-50 text-red-500 touch-manipulation">
-                            <Trash2 size={18} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="hidden md:block bg-white border border-slate-100 rounded-2xl sm:rounded-[32px] overflow-hidden shadow-sm overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[480px]">
-                    <thead>
-                      <tr className="bg-slate-50/50 border-b border-slate-100">
-                        <th className="px-4 lg:px-8 py-4 lg:py-6 text-xs font-black text-slate-400 uppercase tracking-widest">用户名</th>
-                        <th className="px-4 lg:px-8 py-4 lg:py-6 text-xs font-black text-slate-400 uppercase tracking-widest">角色</th>
-                        <th className="px-4 lg:px-8 py-4 lg:py-6 text-xs font-black text-slate-400 uppercase tracking-widest text-right">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map((user) => (
-                        <tr key={user.username} className="border-b border-slate-50 last:border-none hover:bg-slate-50/30 transition-all">
-                          <td className="px-4 lg:px-8 py-4 lg:py-6 font-black text-slate-800">{user.username}</td>
-                          <td className="px-4 lg:px-8 py-4 lg:py-6">
+                {users.length === 0 ? (
+                  <div className="bg-amber-50 border border-amber-100 rounded-2xl p-6 text-center">
+                    <AlertTriangle className="mx-auto text-amber-500 mb-2" size={28} />
+                    <p className="font-black text-slate-700">暂无用户数据</p>
+                    <p className="text-sm text-slate-500 mt-1">点击「添加用户」创建，或清除本站数据后重新登录以恢复默认账号（admin / admin123）</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Mobile cards */}
+                    <div className="md:hidden space-y-3">
+                      {users.map(user => (
+                        <div key={user.username} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <div className="font-black text-slate-800">{user.username}</div>
                             <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
                               {user.role}
                             </span>
-                          </td>
-                          <td className="px-4 lg:px-8 py-4 lg:py-6 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => handleResetPassword(user.username)}
-                                className="text-slate-400 hover:text-blue-600 transition-all text-[10px] font-black uppercase touch-manipulation"
-                              >
-                                重置密码
+                          </div>
+                          <div className="flex gap-3">
+                            <button onClick={() => openResetPasswordModal(user.username)} className="flex-1 text-center py-2 rounded-xl bg-blue-50 text-blue-600 text-xs font-black touch-manipulation">
+                              重置密码
+                            </button>
+                            {user.username !== 'admin' && (
+                              <button onClick={() => handleDeleteUser(user.username)} className="px-4 py-2 rounded-xl bg-red-50 text-red-500 touch-manipulation">
+                                <Trash2 size={18} />
                               </button>
-                              {user.username !== 'admin' && (
-                                <button onClick={() => handleDeleteUser(user.username)} className="text-slate-300 hover:text-red-500 transition-all touch-manipulation">
-                                  <Trash2 size={18} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                            )}
+                          </div>
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </div>
+
+                    <div className="hidden md:block bg-white border border-slate-100 rounded-2xl sm:rounded-[32px] overflow-hidden shadow-sm overflow-x-auto">
+                      <table className="w-full text-left border-collapse min-w-[480px]">
+                        <thead>
+                          <tr className="bg-slate-50/50 border-b border-slate-100">
+                            <th className="px-4 lg:px-8 py-4 lg:py-6 text-xs font-black text-slate-400 uppercase tracking-widest">用户名</th>
+                            <th className="px-4 lg:px-8 py-4 lg:py-6 text-xs font-black text-slate-400 uppercase tracking-widest">角色</th>
+                            <th className="px-4 lg:px-8 py-4 lg:py-6 text-xs font-black text-slate-400 uppercase tracking-widest text-right">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {users.map((user) => (
+                            <tr key={user.username} className="border-b border-slate-50 last:border-none hover:bg-slate-50/30 transition-all">
+                              <td className="px-4 lg:px-8 py-4 lg:py-6 font-black text-slate-800">{user.username}</td>
+                              <td className="px-4 lg:px-8 py-4 lg:py-6">
+                                <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
+                                  {user.role}
+                                </span>
+                              </td>
+                              <td className="px-4 lg:px-8 py-4 lg:py-6 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => openResetPasswordModal(user.username)}
+                                    className="text-slate-400 hover:text-blue-600 transition-all text-[10px] font-black uppercase touch-manipulation"
+                                  >
+                                    重置密码
+                                  </button>
+                                  {user.username !== 'admin' && (
+                                    <button onClick={() => handleDeleteUser(user.username)} className="text-slate-300 hover:text-red-500 transition-all touch-manipulation">
+                                      <Trash2 size={18} />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -970,6 +1140,84 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, curren
           </div>
         </div>
       </main>
+
+      {userModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={closeUserModal}>
+          <div
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md p-6 sm:p-8 animate-fade-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-black text-slate-800">
+                {userModal === 'add' ? '添加用户' : `重置密码 — ${userModalTarget}`}
+              </h3>
+              <button type="button" onClick={closeUserModal} className="text-slate-300 hover:text-slate-600 touch-manipulation" aria-label="关闭">
+                <X size={22} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitUserModal} className="space-y-5">
+              {userModal === 'add' && (
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">用户名</label>
+                  <input
+                    type="text"
+                    value={formUsername}
+                    onChange={e => setFormUsername(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 focus:border-blue-500 focus:outline-none font-bold"
+                    placeholder="输入新用户名"
+                    autoComplete="off"
+                    autoFocus
+                    required
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                  {userModal === 'add' ? '登录密码' : '新密码'}
+                </label>
+                <input
+                  type="password"
+                  value={formPassword}
+                  onChange={e => setFormPassword(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border-2 border-slate-100 focus:border-blue-500 focus:outline-none font-bold"
+                  placeholder="至少 6 位"
+                  autoComplete="new-password"
+                  autoFocus={userModal === 'reset'}
+                  required
+                  minLength={6}
+                />
+              </div>
+
+              {formError && (
+                <div className="flex items-start gap-2 bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm font-bold border border-red-100">
+                  <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
+                  {formError}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={closeUserModal}
+                  disabled={userSaving}
+                  className="flex-1 py-3 rounded-xl font-black text-slate-500 bg-slate-50 hover:bg-slate-100 touch-manipulation disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={userSaving}
+                  className="flex-1 py-3 rounded-xl font-black text-white bg-blue-600 hover:bg-blue-700 flex items-center justify-center gap-2 touch-manipulation disabled:opacity-70"
+                >
+                  {userSaving ? <Loader2 size={18} className="animate-spin" /> : null}
+                  {userModal === 'add' ? '创建' : '保存'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

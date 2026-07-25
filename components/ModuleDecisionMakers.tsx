@@ -21,9 +21,12 @@ export const ModuleDecisionMakers: React.FC<ModuleDecisionMakersProps> = ({ data
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm">
-        <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2">
+        <h3 className="text-2xl font-black text-slate-800 mb-2 flex items-center gap-2">
           <Users className="text-blue-600" /> 关键决策人挖掘 (Decision Makers)
         </h3>
+        <p className="text-sm text-slate-400 font-bold mb-6">
+          聚焦：老板 / 董事会成员 + 进口运输、物流、报关相关部门；已排除采购部门人员
+        </p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {decisionMakers.map((dm, i) => (
@@ -35,9 +38,19 @@ export const ModuleDecisionMakers: React.FC<ModuleDecisionMakersProps> = ({ data
   );
 };
 
+const typeLabel = (type?: string) => {
+  switch (type) {
+    case 'CEO': return { text: '高管/老板', cls: 'bg-purple-100 text-purple-700' };
+    case 'Board': return { text: '董事会/股东', cls: 'bg-indigo-100 text-indigo-700' };
+    case 'Logistics': return { text: '进口运输/物流', cls: 'bg-emerald-100 text-emerald-700' };
+    default: return { text: '其他', cls: 'bg-slate-100 text-slate-600' };
+  }
+};
+
 const DecisionMakerCard: React.FC<{ dm: any, index: number, onEmailChange: (i: number, e: string) => void }> = ({ dm, index, onEmailChange }) => {
   const [isEditing, setIsEditing] = React.useState(false);
   const [email, setEmail] = React.useState(dm.emailGuess || '');
+  const badge = typeLabel(dm.type);
 
   return (
     <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 hover:border-blue-200 transition-all group">
@@ -49,6 +62,7 @@ const DecisionMakerCard: React.FC<{ dm: any, index: number, onEmailChange: (i: n
           <div>
             <h4 className="text-lg font-black text-slate-800 group-hover:text-blue-600 transition-colors">{dm.name}</h4>
             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">{dm.title}</div>
+            <span className={`inline-block mt-2 px-2 py-0.5 rounded-md text-[10px] font-black ${badge.cls}`}>{badge.text}</span>
           </div>
         </div>
         {dm.isVerified ? (
